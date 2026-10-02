@@ -1,0 +1,90 @@
+{% extends "allianceauth/base-bs5.html" %}
+{% load i18n %}
+{% load humanize %}
+
+{% block page_title %}{% translate "Mail receiver" %}{% endblock page_title %}
+
+{% block content %}
+    <div class="bg-body bg-opacity-75 rounded p-3 mb-3">
+        <div class="mb-2">
+            <a href="{% url 'yagas_srp:request_list' %}" class="text-decoration-none">
+                <i class="fas fa-arrow-left"></i> {% translate "Back to inbox" %}
+            </a>
+        </div>
+        <h2 class="mb-1">{% translate "Mail receiver" %}</h2>
+        <p class="text-muted mb-0">
+            {% translate "Pilots send their killmail link as an in-game mail to this character. Its inbox is polled every 5 minutes; only mails addressed to it personally are read. Use a dedicated character." %}
+        </p>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-5">
+            <div class="card mb-3">
+                <div class="card-header">{% translate "Select receiver character" %}</div>
+                <div class="card-body">
+                    {% if candidates %}
+                        <form method="post" action="{% url 'yagas_srp:select_receiver' %}">
+                            {% csrf_token %}
+                            <label class="form-label" for="character_id">{% translate "Character" %}</label>
+                            <select class="form-select mb-3" id="character_id" name="character_id" required>
+                                {% for c in candidates %}
+                                    <option value="{{ c.character_id }}">{{ c.name }}{% if show_owner %} ({{ c.owner }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-primary w-100"><i class="fas fa-check"></i> {% translate "Use as receiver" %}</button>
+                        </form>
+                    {% else %}
+                        <p class="text-muted mb-0">
+                            {% if show_owner %}{% translate "No character in Auth has authorized mail access yet (or all of them are receivers already)." %}
+                            {% else %}{% translate "None of your characters has authorized mail access yet (or all of them are receivers already)." %}{% endif %}
+                        </p>
+                    {% endif %}
+                </div>
+                <div class="card-footer">
+                    <a class="btn btn-sm btn-outline-primary" href="{% url 'yagas_srp:add_receiver' %}">
+                        <i class="fas fa-envelope"></i> {% translate "Authorize another character" %}
+                    </a>
+                    <div class="form-text mt-1">{% translate "Log in with the character; it grants read access to its mail (esi-mail.read_mail.v1)." %}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header">{% translate "Current receivers" %}</div>
+                {% if receivers %}
+                    <ul class="list-group list-group-flush">
+                        {% for receiver in receivers %}
+                            <li class="list-group-item">
+                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                    <img src="https://images.evetech.net/characters/{{ receiver.character_id }}/portrait?size=64" width="48" height="48" alt="" class="rounded">
+                                    <div class="flex-grow-1">
+                                        <strong>{{ receiver.character_name }}</strong>
+                                        {% if receiver.is_active %}<span class="badge text-bg-success">{% translate "active" %}</span>{% else %}<span class="badge text-bg-secondary">{% translate "inactive" %}</span>{% endif %}
+                                        <div class="small text-muted">
+                                            {% if receiver.last_polled_at %}{% translate "last polled" %} {{ receiver.last_polled_at|naturaltime }}{% else %}{% translate "not polled yet" %}{% endif %}
+                                            {% if receiver.added_by %}&middot; {% translate "added by" %} {{ receiver.added_by }}{% endif %}
+                                        </div>
+                                        {% if receiver.last_error %}<div class="small text-danger"><i class="fas fa-triangle-exclamation"></i> {{ receiver.last_error }}</div>{% endif %}
+                                    </div>
+                                    <form method="post" action="{% url 'yagas_srp:update_receiver' receiver.pk %}" class="d-flex gap-2">
+                                        {% csrf_token %}
+                                        {% if receiver.is_active %}
+                                            <button type="submit" name="action" value="deactivate" class="btn btn-sm btn-outline-secondary">{% translate "Deactivate" %}</button>
+                                        {% else %}
+                                            <button type="submit" name="action" value="activate" class="btn btn-sm btn-outline-success">{% translate "Activate" %}</button>
+                                        {% endif %}
+                                        <button type="submit" name="action" value="remove" class="btn btn-sm btn-outline-danger"
+                                                onclick="return confirm('{% translate "Remove this receiver? Requests already collected are kept." %}');">{% translate "Remove" %}</button>
+                                    </form>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="card-body text-muted">{% translate "No receiver selected yet, so no mail is being collected." %}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock content %}

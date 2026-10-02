@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yagas-srp"
+version = "0.2.0"
+description = "Mail-driven ship replacement (SRP) inbox for AllianceAuth: polls a receiver character's in-game mail, resolves the linked killmail, values hull + fit, and gives directors an approve/deny queue"
+requires-python = ">=3.10"
+dependencies = [
+    "allianceauth>=4,<6",
+    "django-esi",
+    "httpx",
+]
+
+[tool.setuptools.packages.find]
+include = ["yagas_srp*"]
+
+[tool.setuptools.package-data]
+yagas_srp = ["templates/**/*"]
