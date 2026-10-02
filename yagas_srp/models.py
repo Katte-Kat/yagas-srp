@@ -40,6 +40,7 @@ class SrpRequest(models.Model):
         APPROVED = "approved", _("Approved")
         DENIED = "denied", _("Denied")
         INVALID = "invalid", _("Invalid")
+        ARCHIVED = "archived", _("Archived")  # old mails imported from the mailbox history, not up for a decision
 
     receiver = models.ForeignKey(
         MailReceiver, on_delete=models.SET_NULL, null=True, blank=True, related_name="requests")
@@ -89,6 +90,18 @@ class SrpRequest(models.Model):
 
     def __str__(self) -> str:
         return f"#{self.pk} {self.ship_type_name or 'no killmail'} ({self.status})"
+
+    @property
+    def payout_value(self):
+        """What would be (or was) paid: the approved amount once approved, else the computed total."""
+        if self.status == self.Status.APPROVED and self.approved_amount is not None:
+            return self.approved_amount
+        return self.total_value
+
+    @property
+    def pilot_name(self) -> str:
+        """The lost pilot as shown in lists; the mail sender when the killmail could not be read."""
+        return self.victim_name or self.sender_name
 
 
 class SrpRequestItem(models.Model):

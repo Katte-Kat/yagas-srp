@@ -10,6 +10,7 @@ from django.db.models import Count, F, Func, IntegerField, Value
 from django.db.models.functions import Coalesce, NullIf
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .models import MailReceiver, SrpRequest
@@ -92,6 +93,9 @@ def request_list(request):
         "receivers": MailReceiver.objects.all(),
         "can_manage": request.user.has_perm("yagas_srp.manage_receiver"),
         "can_poll": _can_poll(request.user),
+        "can_approve": request.user.has_perm("yagas_srp.approve_requests"),
+        "show_actions": status == SrpRequest.Status.PENDING and request.user.has_perm("yagas_srp.approve_requests"),
+        "list_url": request.get_full_path(),
     })
 
 
@@ -116,6 +120,15 @@ def request_detail(request, pk):
     })
 
 
+def _back(request, pk):
+    """Back to where the decision was made (the inbox list sends its own URL), else the detail page."""
+    target = request.POST.get("next") or ""
+    if target and url_has_allowed_host_and_scheme(
+            target, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(target)
+    return redirect("yagas_srp:request_detail", pk=pk)
+
+
 @login_required
 @permission_required("yagas_srp.approve_requests")
 @require_POST
@@ -127,7 +140,7 @@ def review_request(request, pk):
     review = {"reviewed_by": request.user, "reviewed_at": timezone.now(), "review_note": note}
 
     if action == "reopen":
-        if srp.status in (SrpRequest.Status.APPROVED, SrpRequest.Status.DENIED):
+        if srp.status in (SrpRequest.Status.APPROVED, SrpRequest.Status.DENIED, SrpRequest.Status.ARCHIVED):
             srp.status = SrpRequest.Status.PENDING
             srp.reviewed_by = None
             srp.reviewed_at = None
@@ -152,7 +165,7 @@ def review_request(request, pk):
             messages.success(request, f"Request #{pk} denied.")
         else:
             messages.warning(request, f"Request #{pk} was already decided.")
-    return redirect("yagas_srp:request_detail", pk=pk)
+    return _back(request, pk)
 
 
 @login_required

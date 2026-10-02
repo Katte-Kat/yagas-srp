@@ -8,6 +8,45 @@ logger = logging.getLogger(__name__)
 
 # One poll handles at most this many new mails; the rest wait for the next run.
 MAX_NEW_MAILS_PER_POLL = 25
+# ESI lists 50 mail headers per page, newest first. The regular poll looks at this many pages (the
+# newest 200 mails), so a burst of mail between two polls is not lost; the whole history is
+# read once by the srp_backfill_mailbox command instead.
+POLL_HEADER_PAGES = 4
+
+
+def fetch_mail_headers(esi, character_id, token, max_pages=POLL_HEADER_PAGES, older_than=None,
+                       wait_on_rate_limit=False):
+    """Mail headers, newest first, up to `max_pages` pages of 50 (None = until the inbox is exhausted).
+
+    With `wait_on_rate_limit` (long-running imports) a used-up ESI bucket is waited out instead of raised.
+    """
+    import time
+
+    from esi.exceptions import ESIBucketLimitException
+
+    headers, last_mail_id, pages = [], None, 0
+    while max_pages is None or pages < max_pages:
+        kwargs = {"character_id": character_id, "token": token}
+        if last_mail_id:
+            kwargs["last_mail_id"] = last_mail_id
+        for attempt in range(4):
+            try:
+                chunk, _resp = esi.client.Mail.GetCharactersCharacterIdMail(**kwargs).result(
+                    return_response=True, force_refresh=True)
+                break
+            except ESIBucketLimitException as exc:
+                if not wait_on_rate_limit or attempt == 3:
+                    raise
+                time.sleep(float(getattr(exc, "reset", 0) or 900) + 5)
+        chunk = list(chunk)
+        pages += 1
+        if not chunk:
+            break
+        headers += chunk
+        last_mail_id = min(h.mail_id for h in chunk)
+        if len(chunk) < 50 or (older_than is not None and min(h.timestamp for h in chunk) < older_than):
+            break
+    return headers
 
 
 def _field(obj, *names):
@@ -41,8 +80,7 @@ def _poll_receiver(receiver) -> int:
         raise RuntimeError(f"No valid ESI token with {MAIL_SCOPE} for {receiver.character_name}; link it again")
 
     esi = esi_provider(["Mail"])
-    headers, _resp = esi.client.Mail.GetCharactersCharacterIdMail(
-        character_id=receiver.character_id, token=token).result(return_response=True, force_refresh=True)
+    headers = fetch_mail_headers(esi, receiver.character_id, token)
 
     known = set(SrpRequest.objects.filter(receiver=receiver).values_list("mail_id", flat=True))
     fresh = sorted(

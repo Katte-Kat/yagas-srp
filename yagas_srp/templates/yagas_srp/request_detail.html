@@ -175,6 +175,14 @@
                         <p class="text-muted mb-0">{% translate "Waiting for a director to decide." %}</p>
                     {% elif srp.status == 'invalid' %}
                         <p class="text-muted mb-0">{% translate "This mail could not be turned into a request, see the warning above." %}</p>
+                    {% elif srp.status == 'archived' %}
+                        <p class="text-muted">{% translate "Imported from the mailbox history. It is kept for reference and not waiting for a decision." %}</p>
+                        {% if can_approve %}
+                            <form method="post" action="{% url 'yagas_srp:review_request' srp.pk %}">
+                                {% csrf_token %}
+                                <button type="submit" name="action" value="reopen" class="btn btn-sm btn-outline-secondary"><i class="fas fa-rotate-left"></i> {% translate "Put back into the pending queue" %}</button>
+                            </form>
+                        {% endif %}
                     {% else %}
                         <p class="mb-1">
                             <strong>{{ srp.get_status_display }}</strong>

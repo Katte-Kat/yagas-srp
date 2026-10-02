@@ -72,6 +72,7 @@
                                 </a>
                             </th>
                         {% endfor %}
+                        {% if show_actions %}<th class="text-end">{% translate "Decide" %}</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -79,8 +80,9 @@
                         <tr>
                             <td><a href="{% url 'yagas_srp:request_detail' srp.pk %}">#{{ srp.pk }}</a></td>
                             <td class="text-nowrap">{{ srp.received_at|date:"Y-m-d H:i" }}</td>
-                            <td>
+                            <td class="text-nowrap">
                                 {% if srp.victim_name %}{{ srp.victim_name }}{% else %}<span class="text-muted">{{ srp.sender_name|default:"—" }} <small>({% translate "sender" %})</small></span>{% endif %}
+                                {% if srp.pilot_name %}<button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted copy-btn" data-copy="{{ srp.pilot_name }}" title="{% translate 'Copy pilot name' %}"><i class="fas fa-copy"></i></button>{% endif %}
                             </td>
                             <td>
                                 {% if srp.ship_type_id %}
@@ -89,7 +91,10 @@
                                 {{ srp.ship_type_name|default:"—" }}
                             </td>
                             <td>{{ srp.solar_system_name|default:"—" }}</td>
-                            <td class="text-end fw-bold" title="{% translate 'Hull' %} {{ srp.ship_value|floatformat:0|intcomma }} + {% translate 'fit' %} {{ srp.fit_value|floatformat:0|intcomma }}">{{ srp.total_value|floatformat:0|intcomma }}</td>
+                            <td class="text-end text-nowrap">
+                                <span class="fw-bold" title="{% translate 'Hull' %} {{ srp.ship_value|floatformat:0|intcomma }} + {% translate 'fit' %} {{ srp.fit_value|floatformat:0|intcomma }}">{{ srp.payout_value|floatformat:0|intcomma }}</span>
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted copy-btn" data-copy="{{ srp.payout_value|floatformat:'0u' }}" title="{% translate 'Copy ISK amount (digits only)' %}"><i class="fas fa-copy"></i></button>
+                            </td>
                             <td>
                                 {% if srp.validation_flags %}
                                     <span class="text-warning" title="{{ srp.validation_flags|join:' | ' }}">
@@ -97,9 +102,26 @@
                                     </span>
                                 {% endif %}
                             </td>
+                            {% if show_actions %}
+                                <td class="text-end text-nowrap">
+                                    <form method="post" action="{% url 'yagas_srp:review_request' srp.pk %}" class="d-inline-flex gap-1">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ list_url }}">
+                                        <button type="submit" name="action" value="approve" class="btn btn-success btn-sm"
+                                                title="{% translate 'Approve for the full amount' %}"
+                                                {% if srp.validation_flags %}data-confirm="{{ srp.validation_flags|length }} {% translate 'warning(s)' %}: {{ srp.validation_flags|join:' | ' }} &#10;&#10;{% translate 'Approve anyway?' %}"{% endif %}>
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                        <button type="submit" name="action" value="deny" class="btn btn-danger btn-sm"
+                                                title="{% translate 'Deny' %}" data-confirm="{% translate 'Deny request' %} #{{ srp.pk }}?">
+                                            <i class="fas fa-xmark"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            {% endif %}
                         </tr>
                     {% empty %}
-                        <tr><td colspan="7" class="text-muted">{% translate "Nothing here." %}</td></tr>
+                        <tr><td colspan="{% if show_actions %}8{% else %}7{% endif %}" class="text-muted">{% translate "Nothing here." %}</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -119,4 +141,36 @@
             </ul>
         </nav>
     {% endif %}
+
+    <script>
+    (function () {
+        function copyText(text) {
+            if (navigator.clipboard && window.isSecureContext) { return navigator.clipboard.writeText(text); }
+            return new Promise(function (resolve, reject) {
+                var area = document.createElement("textarea");
+                area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+                document.body.appendChild(area); area.select();
+                try { document.execCommand("copy") ? resolve() : reject(); } catch (error) { reject(error); }
+                finally { document.body.removeChild(area); }
+            });
+        }
+        function flash(button, iconClass) {
+            var icon = button.querySelector("i"); var original = icon.className;
+            icon.className = "fas " + iconClass;
+            setTimeout(function () { icon.className = original; }, 1200);
+        }
+        document.addEventListener("click", function (event) {
+            var copy = event.target.closest(".copy-btn");
+            if (copy) {
+                event.preventDefault();
+                copyText(copy.dataset.copy).then(
+                    function () { flash(copy, "fa-check text-success"); },
+                    function () { flash(copy, "fa-xmark text-danger"); });
+                return;
+            }
+            var guarded = event.target.closest("button[data-confirm]");
+            if (guarded && !window.confirm(guarded.dataset.confirm)) { event.preventDefault(); }
+        });
+    })();
+    </script>
 {% endblock content %}
