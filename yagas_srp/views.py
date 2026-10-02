@@ -6,7 +6,8 @@ from esi.decorators import token_required
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required, user_passes_test
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db.models import Count, F, Func, IntegerField, Value
+from django.db.models.functions import Coalesce, NullIf
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -22,6 +23,31 @@ SLOT_ORDER = [
     ("subsystem", "Subsystems"), ("drone", "Drones"), ("fighter", "Fighters"),
 ]
 NOT_COUNTED = [("cargo", "Cargo"), ("implant", "Implants"), ("other", "Other holds")]
+
+# Sortable inbox columns: key -> (label, ordering expression, direction on first click, right-aligned)
+INBOX_COLUMNS = [
+    ("id", "#", F("id"), "desc", False),
+    ("received", "Received", F("received_at"), "desc", False),
+    # shown as the victim, or the mail sender when the killmail could not be read
+    ("pilot", "Pilot", Coalesce(NullIf(F("victim_name"), Value("")), F("sender_name")), "asc", False),
+    ("ship", "Ship", F("ship_type_name"), "asc", False),
+    ("system", "System", F("solar_system_name"), "asc", False),
+    ("total", "Total (ISK)", F("total_value"), "desc", True),
+    ("flags", "Flags", Func(F("validation_flags"), function="JSON_LENGTH", output_field=IntegerField()), "desc", False),
+]
+DEFAULT_SORT = ("received", "desc")
+
+
+def _inbox_sort(request):
+    """(key, direction) from ?sort=&dir=, falling back to newest first for anything unknown."""
+    by_key = {col[0]: col for col in INBOX_COLUMNS}
+    key = request.GET.get("sort")
+    if key not in by_key:
+        return DEFAULT_SORT
+    direction = request.GET.get("dir")
+    if direction not in ("asc", "desc"):
+        direction = by_key[key][3]
+    return key, direction
 
 
 def _can_poll(user):
@@ -42,12 +68,27 @@ def request_list(request):
         {"value": value, "label": label, "count": counts.get(value, 0), "active": value == status}
         for value, label in SrpRequest.Status.choices
     ]
-    page = Paginator(SrpRequest.objects.filter(status=status), 50).get_page(request.GET.get("page"))
+    sort, direction = _inbox_sort(request)
+    ordering = next(col[2] for col in INBOX_COLUMNS if col[0] == sort)
+    ordering = ordering.asc() if direction == "asc" else ordering.desc()
+    # "-id" keeps the order of equal values stable between pages
+    requests_qs = SrpRequest.objects.filter(status=status).order_by(ordering, "-id")
+    page = Paginator(requests_qs, 50).get_page(request.GET.get("page"))
+    columns = []
+    for key, label, _expr, first_direction, right in INBOX_COLUMNS:
+        active = key == sort
+        next_direction = ("asc" if direction == "desc" else "desc") if active else first_direction
+        columns.append({
+            "label": label, "right": right, "active": active, "direction": direction,
+            "query": f"status={status}&sort={key}&dir={next_direction}",
+        })
 
     return render(request, "yagas_srp/request_list.html", {
         "tabs": tabs,
         "status": status,
         "page": page,
+        "columns": columns,
+        "sort_query": f"sort={sort}&dir={direction}",
         "receivers": MailReceiver.objects.all(),
         "can_manage": request.user.has_perm("yagas_srp.manage_receiver"),
         "can_poll": _can_poll(request.user),
