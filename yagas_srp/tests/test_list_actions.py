@@ -95,3 +95,45 @@ class ListActionTests(TestCase):
         html = self._html(self.approver, status="approved")
         self.assertIn('data-copy="5000000"', html)
         self.assertNotIn('value="approve"', html)          # no decision buttons outside the pending tab
+
+
+class TabTotalTests(TestCase):
+    """Every tab shows what its requests are worth together."""
+
+    def setUp(self):
+        self.user = make_user("srp_total_viewer", 5101, "view_requests")
+        self.client.force_login(self.user)
+        self.url = reverse("yagas_srp:request_list")
+
+    def _tab(self, status):
+        page = self.client.get(self.url, {"status": status})
+        return page, next(t for t in page.context["tabs"] if t["value"] == status)
+
+    def _make(self, mail_id, status, total, approved=None):
+        return SrpRequest.objects.create(
+            mail_id=mail_id, status=status, total_value=Decimal(total), approved_amount=approved,
+            received_at=timezone.now(), ship_type_name="Vulture")
+
+    def test_totals_per_tab_use_the_approved_amount_for_approved_requests(self):
+        before = {s: self._tab(s)[1] for s in ("pending", "approved", "denied")}
+        self._make(3001, SrpRequest.Status.PENDING, 100)
+        self._make(3002, SrpRequest.Status.PENDING, 250)
+        self._make(3003, SrpRequest.Status.APPROVED, 900, approved=Decimal("700"))   # paid less than calculated
+        self._make(3004, SrpRequest.Status.DENIED, 40)
+        after = {s: self._tab(s)[1] for s in ("pending", "approved", "denied")}
+        self.assertEqual(after["pending"]["total"] - before["pending"]["total"], 350)
+        self.assertEqual(after["approved"]["total"] - before["approved"]["total"], 700)   # not 900
+        self.assertEqual(after["denied"]["total"] - before["denied"]["total"], 40)
+        self.assertEqual(after["pending"]["count"] - before["pending"]["count"], 2)
+
+    def test_summary_line_shows_the_total_of_the_selected_tab_with_a_copy_button(self):
+        self._make(3011, SrpRequest.Status.DENIED, 1234567)
+        page, tab = self._tab("denied")
+        html = page.content.decode()
+        self.assertIn('id="tab-total"', html)
+        self.assertIn(f'data-copy="{int(tab["total"])}"', html)          # digits only
+        self.assertIn("ISK</strong>", html)
+
+    def test_invalid_tab_has_no_total_line(self):
+        page, _tab = self._tab("invalid")
+        self.assertNotIn('id="tab-total"', page.content.decode())

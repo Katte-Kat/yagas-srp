@@ -51,12 +51,20 @@
     <ul class="nav nav-pills">
         {% for tab in tabs %}
             <li class="nav-item">
-                <a class="nav-link {% if tab.active %}active{% endif %}" href="?status={{ tab.value }}&{{ sort_query }}">
+                <a class="nav-link {% if tab.active %}active{% endif %}" href="?status={{ tab.value }}&{{ sort_query }}"{% if tab.value != "invalid" %} title="{{ tab.total|floatformat:0|intcomma }} ISK"{% endif %}>
                     {{ tab.label }} <span class="badge text-bg-secondary">{{ tab.count }}</span>
                 </a>
             </li>
         {% endfor %}
     </ul>
+    {% if show_total %}
+        <div class="d-flex align-items-baseline flex-wrap gap-2 mt-3" id="tab-total">
+            <span class="text-muted">{% translate "Total value of all" %} {{ current_tab.count|intcomma }} {{ current_tab.label|lower }} {% translate "requests" %}:</span>
+            <strong class="fs-5">{{ current_tab.total|floatformat:0|intcomma }} ISK</strong>
+            <button type="button" class="btn btn-link btn-sm p-0 text-muted copy-btn" data-copy="{{ current_tab.total|floatformat:'0u' }}" title="{% translate 'Copy the total (digits only)' %}"><i class="fas fa-copy"></i></button>
+            {% if current_tab.value == "approved" %}<span class="text-muted small">({% translate "approved amounts" %})</span>{% else %}<span class="text-muted small">({% translate "hull + fit, as calculated" %})</span>{% endif %}
+        </div>
+    {% endif %}
     </div>
 
     <div class="card">

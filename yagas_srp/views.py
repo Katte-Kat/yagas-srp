@@ -6,7 +6,7 @@ from esi.decorators import token_required
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required, user_passes_test
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Func, IntegerField, Value
+from django.db.models import Case, Count, DecimalField, F, Func, IntegerField, Sum, Value, When
 from django.db.models.functions import Coalesce, NullIf
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -64,11 +64,21 @@ def request_list(request):
     if status not in SrpRequest.Status.values:
         status = SrpRequest.Status.PENDING
 
-    counts = dict(SrpRequest.objects.values_list("status").annotate(n=Count("id")))
+    # One grouped query for every tab: how many requests and what they are worth together
+    # (the approved amount for approved requests, the computed hull + fit value otherwise).
+    worth = Case(
+        When(status=SrpRequest.Status.APPROVED, approved_amount__isnull=False, then=F("approved_amount")),
+        default=F("total_value"), output_field=DecimalField(max_digits=22, decimal_places=0))
+    per_status = {
+        row["status"]: row
+        for row in SrpRequest.objects.values("status").annotate(n=Count("id"), total=Sum(worth))
+    }
     tabs = [
-        {"value": value, "label": label, "count": counts.get(value, 0), "active": value == status}
+        {"value": value, "label": label, "count": per_status.get(value, {}).get("n", 0),
+         "total": per_status.get(value, {}).get("total") or 0, "active": value == status}
         for value, label in SrpRequest.Status.choices
     ]
+    current_tab = next(tab for tab in tabs if tab["active"])
     sort, direction = _inbox_sort(request)
     ordering = next(col[2] for col in INBOX_COLUMNS if col[0] == sort)
     ordering = ordering.asc() if direction == "asc" else ordering.desc()
@@ -89,6 +99,8 @@ def request_list(request):
         "status": status,
         "page": page,
         "columns": columns,
+        "current_tab": current_tab,
+        "show_total": status != SrpRequest.Status.INVALID,   # invalid mails have no value
         "sort_query": f"sort={sort}&dir={direction}",
         "receivers": MailReceiver.objects.all(),
         "can_manage": request.user.has_perm("yagas_srp.manage_receiver"),
