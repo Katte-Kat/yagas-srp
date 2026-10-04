@@ -85,13 +85,14 @@
                                 </a>
                             </th>
                         {% endfor %}
+                        {% if show_paid %}<th class="text-nowrap" title="{% translate 'Read from the wallet booking that names this request: SRP #number' %}">{% translate "Paid" %}</th>{% endif %}
                         {% if show_actions %}<th class="text-end">{% translate "Decide" %}</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for srp in page %}
                         <tr>
-                            <td><a href="{% url 'yagas_srp:request_detail' srp.pk %}">#{{ srp.pk }}</a></td>
+                            <td class="text-nowrap"><a href="{% url 'yagas_srp:request_detail' srp.pk %}">#{{ srp.pk }}</a><button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted copy-btn" data-copy="{{ srp.reason_text }}" title="{% translate 'Copy the payment reason' %}: {{ srp.reason_text }}"><i class="fas fa-hashtag"></i></button></td>
                             <td class="text-nowrap">{{ srp.received_at|date:"Y-m-d H:i" }}</td>
                             <td class="text-nowrap">
                                 {% if srp.victim_name %}{{ srp.victim_name }}{% else %}<span class="text-muted">{{ srp.sender_name|default:"—" }} <small>({% translate "sender" %})</small></span>{% endif %}
@@ -115,6 +116,9 @@
                                     </span>
                                 {% endif %}
                             </td>
+                            {% if show_paid %}
+                                <td class="text-nowrap">{% include "yagas_srp/_paid_badge.html" with payment=srp.paid %}</td>
+                            {% endif %}
                             {% if show_actions %}
                                 <td class="text-end text-nowrap">
                                     <form method="post" action="{% url 'yagas_srp:review_request' srp.pk %}" class="d-inline-flex gap-1">
@@ -155,35 +159,5 @@
         </nav>
     {% endif %}
 
-    <script>
-    (function () {
-        function copyText(text) {
-            if (navigator.clipboard && window.isSecureContext) { return navigator.clipboard.writeText(text); }
-            return new Promise(function (resolve, reject) {
-                var area = document.createElement("textarea");
-                area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
-                document.body.appendChild(area); area.select();
-                try { document.execCommand("copy") ? resolve() : reject(); } catch (error) { reject(error); }
-                finally { document.body.removeChild(area); }
-            });
-        }
-        function flash(button, iconClass) {
-            var icon = button.querySelector("i"); var original = icon.className;
-            icon.className = "fas " + iconClass;
-            setTimeout(function () { icon.className = original; }, 1200);
-        }
-        document.addEventListener("click", function (event) {
-            var copy = event.target.closest(".copy-btn");
-            if (copy) {
-                event.preventDefault();
-                copyText(copy.dataset.copy).then(
-                    function () { flash(copy, "fa-check text-success"); },
-                    function () { flash(copy, "fa-xmark text-danger"); });
-                return;
-            }
-            var guarded = event.target.closest("button[data-confirm]");
-            if (guarded && !window.confirm(guarded.dataset.confirm)) { event.preventDefault(); }
-        });
-    })();
-    </script>
+    {% include "yagas_srp/_copy_script.html" %}
 {% endblock content %}

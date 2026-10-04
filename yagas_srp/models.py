@@ -100,6 +100,12 @@ class SrpRequest(models.Model):
         return self.total_value
 
     @property
+    def reason_text(self) -> str:
+        """What to type as the Reason of the in-game payment: it names this request, so the wallet booking
+        can be tied back to it (yagas_finance files it under SRP and the inbox shows the request as paid)."""
+        return f"SRP #{self.pk}"
+
+    @property
     def pilot_name(self) -> str:
         """The lost pilot as shown in lists; the mail sender when the killmail could not be read."""
         return self.victim_name or self.sender_name

@@ -18,6 +18,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .models import MailReceiver, SrpRequest
+from .payments import payment_states
 from .roles import ROLE, ROLE_SUMMARY, display_name, ensure_role, find_account, search_accounts
 from .services import MAIL_SCOPE, reprice_request
 from .tasks import poll_mailbox
@@ -90,6 +91,14 @@ def request_list(request):
     # "-id" keeps the order of equal values stable between pages
     requests_qs = SrpRequest.objects.filter(status=status).order_by(ordering, "-id")
     page = Paginator(requests_qs, 50).get_page(request.GET.get("page"))
+    show_paid = status == SrpRequest.Status.APPROVED
+    if show_paid:
+        # which of these were paid? (one read of the finance wallet journal for the whole page; never fatal)
+        rows = list(page.object_list)
+        states = payment_states(rows)
+        for srp in rows:
+            srp.paid = states.get(srp.pk)
+        page.object_list = rows
     columns = []
     for key, label, _expr, first_direction, right in INBOX_COLUMNS:
         active = key == sort
@@ -106,6 +115,7 @@ def request_list(request):
         "columns": columns,
         "current_tab": current_tab,
         "show_total": status != SrpRequest.Status.INVALID,   # invalid mails have no value
+        "show_paid": show_paid,
         "sort_query": f"sort={sort}&dir={direction}",
         "receivers": MailReceiver.objects.all(),
         "can_manage": request.user.has_perm("yagas_srp.manage_receiver"),
@@ -132,6 +142,7 @@ def request_detail(request, pk):
     ]
     return render(request, "yagas_srp/request_detail.html", {
         "srp": srp,
+        "payment": payment_states([srp]).get(srp.pk),
         "counted_groups": [g for g in counted if g["items"]],
         "other_groups": [g for g in not_counted if g["items"]],
         "can_approve": request.user.has_perm("yagas_srp.approve_requests"),

@@ -32,6 +32,24 @@
     </div>
     </div>
 
+    {% if srp.status == 'approved' or payment %}
+        <div class="card mb-3">
+            <div class="card-body d-flex flex-wrap align-items-center gap-4">
+                <div>
+                    <span class="text-muted">{% translate "Reason for the in-game payment" %}</span>
+                    <code class="fs-6 ms-1">{{ srp.reason_text }}</code>
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted copy-btn" data-copy="{{ srp.reason_text }}" title="{% translate 'Copy the payment reason' %}"><i class="fas fa-copy"></i></button>
+                </div>
+                <div>
+                    <span class="text-muted">{% translate "Wallet booking" %}</span>
+                    {% if payment %}{% include "yagas_srp/_paid_badge.html" with payment=payment %}
+                        {% if payment.state == "differs" %}<span class="small text-muted">({% translate "approved" %} {{ payment.expected|floatformat:0|intcomma }} ISK)</span>{% endif %}
+                    {% else %}<span class="text-muted">&mdash;</span>{% endif %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
     {% if srp.validation_flags %}
         <div class="alert alert-warning">
             <strong><i class="fas fa-triangle-exclamation"></i> {% translate "Check before deciding" %}</strong>
@@ -204,4 +222,5 @@
             </div>
         </div>
     </div>
+    {% include "yagas_srp/_copy_script.html" %}
 {% endblock content %}

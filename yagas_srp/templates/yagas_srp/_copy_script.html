@@ -1,0 +1,32 @@
+{# copy buttons (.copy-btn, text in data-copy) and the confirm guard for buttons with data-confirm #}
+    <script>
+    (function () {
+        function copyText(text) {
+            if (navigator.clipboard && window.isSecureContext) { return navigator.clipboard.writeText(text); }
+            return new Promise(function (resolve, reject) {
+                var area = document.createElement("textarea");
+                area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+                document.body.appendChild(area); area.select();
+                try { document.execCommand("copy") ? resolve() : reject(); } catch (error) { reject(error); }
+                finally { document.body.removeChild(area); }
+            });
+        }
+        function flash(button, iconClass) {
+            var icon = button.querySelector("i"); var original = icon.className;
+            icon.className = "fas " + iconClass;
+            setTimeout(function () { icon.className = original; }, 1200);
+        }
+        document.addEventListener("click", function (event) {
+            var copy = event.target.closest(".copy-btn");
+            if (copy) {
+                event.preventDefault();
+                copyText(copy.dataset.copy).then(
+                    function () { flash(copy, "fa-check text-success"); },
+                    function () { flash(copy, "fa-xmark text-danger"); });
+                return;
+            }
+            var guarded = event.target.closest("button[data-confirm]");
+            if (guarded && !window.confirm(guarded.dataset.confirm)) { event.preventDefault(); }
+        });
+    })();
+    </script>
