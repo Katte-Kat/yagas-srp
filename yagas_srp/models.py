@@ -13,6 +13,7 @@ class SrpPermissions(models.Model):
             ("view_requests", "Can view the SRP request inbox"),
             ("approve_requests", "Can approve or deny SRP requests"),
             ("manage_receiver", "Can link the SRP mail receiver character"),
+            ("assign_srp_managers", "Can hand out and take away the SRP Manager role"),
         )
 
 

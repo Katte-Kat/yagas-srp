@@ -4,6 +4,9 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from esi.decorators import token_required
 
 from django.contrib import messages
+from django.contrib.admin.models import CHANGE, LogEntry
+from django.contrib.auth.models import Group, User
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth.decorators import login_required, permission_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import Case, Count, DecimalField, F, Func, IntegerField, Sum, Value, When
@@ -14,6 +17,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .models import MailReceiver, SrpRequest
+from .roles import ROLE, ROLE_SUMMARY, display_name, ensure_role, find_account
 from .services import MAIL_SCOPE, reprice_request
 from .tasks import poll_mailbox
 
@@ -106,6 +110,7 @@ def request_list(request):
         "can_manage": request.user.has_perm("yagas_srp.manage_receiver"),
         "can_poll": _can_poll(request.user),
         "can_approve": request.user.has_perm("yagas_srp.approve_requests"),
+        "can_assign_managers": request.user.has_perm("yagas_srp.assign_srp_managers"),
         "show_actions": status == SrpRequest.Status.PENDING and request.user.has_perm("yagas_srp.approve_requests"),
         "list_url": request.get_full_path(),
     })
@@ -286,3 +291,63 @@ def add_receiver(request, token):
     )
     messages.success(request, f"{token.character_name} is now an SRP mail receiver.")
     return redirect("yagas_srp:receivers")
+
+
+def _audit(request, group, message):
+    """Role changes show up in the Django admin log of the group, with who did it."""
+    LogEntry.objects.create(
+        user=request.user, content_type=ContentType.objects.get_for_model(Group), object_id=str(group.pk),
+        object_repr=str(group)[:200], action_flag=CHANGE, change_message=message)
+
+
+@login_required
+@permission_required("yagas_srp.assign_srp_managers")
+def managers(request):
+    group = Group.objects.filter(name=ROLE).first()
+    members = []
+    if group is not None:
+        for user in group.user_set.filter(is_active=True).select_related("profile__main_character"):
+            main = user.profile.main_character
+            members.append({
+                "user_id": user.pk, "name": display_name(user), "username": user.username,
+                "character_id": main.character_id if main else None,
+            })
+        members.sort(key=lambda member: member["name"].lower())
+    names = User.objects.filter(is_active=True, profile__main_character__isnull=False).values_list(
+        "profile__main_character__character_name", flat=True).order_by("profile__main_character__character_name")
+    return render(request, "yagas_srp/managers.html", {
+        "role": ROLE, "summary": ROLE_SUMMARY, "members": members, "character_names": list(names),
+    })
+
+
+@login_required
+@permission_required("yagas_srp.assign_srp_managers")
+@require_POST
+def manager_add(request):
+    user, error = find_account(request.POST.get("character"))
+    if error:
+        messages.error(request, error)
+    else:
+        group = ensure_role()
+        if group.user_set.filter(pk=user.pk).exists():
+            messages.info(request, f"{display_name(user)} already is {ROLE}.")
+        else:
+            user.groups.add(group)
+            _audit(request, group, f"Added {user.username} ({display_name(user)}) via the SRP inbox")
+            messages.success(request, f"{display_name(user)} is now {ROLE}.")
+    return redirect("yagas_srp:managers")
+
+
+@login_required
+@permission_required("yagas_srp.assign_srp_managers")
+@require_POST
+def manager_remove(request):
+    group = Group.objects.filter(name=ROLE).first()
+    user = User.objects.filter(pk=request.POST.get("user_id") or 0).first()
+    if group is None or user is None or not group.user_set.filter(pk=user.pk).exists():
+        messages.error(request, "That person does not have this role.")
+    else:
+        user.groups.remove(group)
+        _audit(request, group, f"Removed {user.username} ({display_name(user)}) via the SRP inbox")
+        messages.success(request, f"{display_name(user)} no longer is {ROLE}.")
+    return redirect("yagas_srp:managers")

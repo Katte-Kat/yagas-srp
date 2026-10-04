@@ -14,4 +14,7 @@ urlpatterns = [
     path("receivers/select", views.select_receiver, name="select_receiver"),
     path("receivers/<int:pk>/update", views.update_receiver, name="update_receiver"),
     path("receiver/add", views.add_receiver, name="add_receiver"),
+    path("managers/", views.managers, name="managers"),
+    path("managers/add", views.manager_add, name="manager_add"),
+    path("managers/remove", views.manager_remove, name="manager_remove"),
 ]

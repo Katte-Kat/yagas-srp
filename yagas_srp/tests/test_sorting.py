@@ -38,9 +38,16 @@ class InboxSortingTests(TestCase):
                 received_at=now - timedelta(hours=hours), status=SrpRequest.Status.INVALID)
 
     def _ships(self, **params):
-        page = self.client.get(self.url, {"status": "invalid", **params})
-        self.assertEqual(page.status_code, 200)
-        return [r.ship_type_name for r in page.context["page"] if r.mail_id in self.mail_ids]
+        """The test rows in the order the list shows them, found on whichever page they land
+        (a live database can hold far more than one page of invalid requests)."""
+        found, number = [], 1
+        while True:
+            page = self.client.get(self.url, {"status": "invalid", "page": number, **params})
+            self.assertEqual(page.status_code, 200)
+            found += [r.ship_type_name for r in page.context["page"] if r.mail_id in self.mail_ids]
+            if not page.context["page"].has_next():
+                return found
+            number += 1
 
     def test_default_is_newest_first(self):
         self.assertEqual(self._ships(), ["Rifter", "Zealot", "Vulture"])

@@ -1,0 +1,59 @@
+{% extends "allianceauth/base-bs5.html" %}
+{% load i18n %}
+
+{% block page_title %}{% translate "SRP Managers" %}{% endblock page_title %}
+
+{% block content %}
+    <div class="bg-body bg-opacity-75 rounded p-3 mb-3">
+        <div class="mb-2">
+            <a href="{% url 'yagas_srp:request_list' %}" class="text-decoration-none">
+                <i class="fas fa-arrow-left"></i> {% translate "Back to inbox" %}
+            </a>
+        </div>
+        <h2 class="mb-1"><i class="fas fa-life-ring"></i> {{ role }}</h2>
+        <p class="text-muted mb-0">{{ summary }}</p>
+    </div>
+
+    <datalist id="character-names">
+        {% for name in character_names %}<option value="{{ name }}">{% endfor %}
+    </datalist>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>{% translate "Current SRP Managers" %}</span>
+                    <span class="badge text-bg-secondary">{{ members|length }}</span>
+                </div>
+                <ul class="list-group list-group-flush">
+                    {% for member in members %}
+                        <li class="list-group-item d-flex align-items-center gap-2">
+                            {% if member.character_id %}<img src="https://images.evetech.net/characters/{{ member.character_id }}/portrait?size=64" width="32" height="32" alt="" class="rounded">{% endif %}
+                            <div class="flex-grow-1">
+                                {{ member.name }}
+                                <div class="small text-muted">{{ member.username }}</div>
+                            </div>
+                            <form method="post" action="{% url 'yagas_srp:manager_remove' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="user_id" value="{{ member.user_id }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('{% translate "Take the SRP Manager role away from this person?" %}');">{% translate "Remove" %}</button>
+                            </form>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item text-muted">{% translate "Nobody yet." %}</li>
+                    {% endfor %}
+                </ul>
+                <div class="card-footer">
+                    <form method="post" action="{% url 'yagas_srp:manager_add' %}" class="d-flex gap-2">
+                        {% csrf_token %}
+                        <input type="text" name="character" list="character-names" class="form-control form-control-sm"
+                               placeholder="{% translate 'Character name of the new SRP Manager' %}" autocomplete="off" required>
+                        <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="fas fa-plus"></i> {% translate "Add" %}</button>
+                    </form>
+                    <div class="form-text mt-1">{% translate "The pilot must have logged in to Auth once. The role works from the next page the pilot opens." %}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}
