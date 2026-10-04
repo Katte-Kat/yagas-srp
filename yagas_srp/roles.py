@@ -47,3 +47,25 @@ def find_account(text):
 def display_name(user):
     main = getattr(user.profile, "main_character", None)
     return main.character_name if main else user.username
+
+
+def search_accounts(text, limit=10):
+    """Registered characters whose name contains `text` (two letters minimum), as suggestions for the
+    "add" box: [{"name": character, "detail": which account it belongs to}]."""
+    text = " ".join((text or "").split())
+    if len(text) < 2:
+        return []
+    owned = (
+        CharacterOwnership.objects.filter(character__character_name__icontains=text, user__is_active=True)
+        .select_related("character", "user__profile__main_character")
+        .order_by("character__character_name")[:limit]
+    )
+    results = []
+    for row in owned:
+        main = getattr(row.user.profile, "main_character", None)
+        if main is not None and main.character_id != row.character.character_id:
+            detail = f"alt of {main.character_name}"
+        else:
+            detail = f"account {row.user.username}"
+        results.append({"name": row.character.character_name, "detail": detail})
+    return results

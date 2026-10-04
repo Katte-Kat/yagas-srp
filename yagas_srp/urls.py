@@ -17,4 +17,5 @@ urlpatterns = [
     path("managers/", views.managers, name="managers"),
     path("managers/add", views.manager_add, name="manager_add"),
     path("managers/remove", views.manager_remove, name="manager_remove"),
+    path("managers/search", views.manager_search, name="manager_search"),
 ]

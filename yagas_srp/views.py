@@ -11,13 +11,14 @@ from django.contrib.auth.decorators import login_required, permission_required, 
 from django.core.paginator import Paginator
 from django.db.models import Case, Count, DecimalField, F, Func, IntegerField, Sum, Value, When
 from django.db.models.functions import Coalesce, NullIf
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .models import MailReceiver, SrpRequest
-from .roles import ROLE, ROLE_SUMMARY, display_name, ensure_role, find_account
+from .roles import ROLE, ROLE_SUMMARY, display_name, ensure_role, find_account, search_accounts
 from .services import MAIL_SCOPE, reprice_request
 from .tasks import poll_mailbox
 
@@ -313,10 +314,8 @@ def managers(request):
                 "character_id": main.character_id if main else None,
             })
         members.sort(key=lambda member: member["name"].lower())
-    names = User.objects.filter(is_active=True, profile__main_character__isnull=False).values_list(
-        "profile__main_character__character_name", flat=True).order_by("profile__main_character__character_name")
     return render(request, "yagas_srp/managers.html", {
-        "role": ROLE, "summary": ROLE_SUMMARY, "members": members, "character_names": list(names),
+        "role": ROLE, "summary": ROLE_SUMMARY, "members": members,
     })
 
 
@@ -351,3 +350,9 @@ def manager_remove(request):
         _audit(request, group, f"Removed {user.username} ({display_name(user)}) via the SRP inbox")
         messages.success(request, f"{display_name(user)} no longer is {ROLE}.")
     return redirect("yagas_srp:managers")
+
+
+@login_required
+@permission_required("yagas_srp.assign_srp_managers")
+def manager_search(request):
+    return JsonResponse({"results": search_accounts(request.GET.get("q"))})

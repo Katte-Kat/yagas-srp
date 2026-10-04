@@ -87,4 +87,32 @@ class SrpManagerRoleTests(TestCase):
         self.client.post(self.add, {"character": "Fresh Manager"})
         page = self.client.get(self.page)
         self.assertEqual([m["name"] for m in page.context["members"]], ["Fresh Manager"])
-        self.assertIn("Fresh Manager", page.context["character_names"])
+
+    def test_search_suggests_registered_characters_after_two_letters(self):
+        url = reverse("yagas_srp:manager_search")
+        names = lambda q: [row["name"] for row in self.client.get(url, {"q": q}).json()["results"]]
+        self.assertEqual(names("fresh"), ["Fresh Manager"])               # contains, any capitalisation
+        self.assertEqual(names("f"), [])                                  # two letters minimum
+        self.assertEqual(names(""), [])
+        # an alt is offered too and says whose it is; a disabled account never is
+        alt = EveCharacter.objects.create(
+            character_id=6990, character_name="Fresh Alt of Manager", corporation_id=1, corporation_name="Test Corp")
+        CharacterOwnership.objects.create(character=alt, user=self.target, owner_hash="alt6990")
+        rows = {row["name"]: row["detail"] for row in self.client.get(url, {"q": "fresh"}).json()["results"]}
+        self.assertEqual(rows["Fresh Alt of Manager"], "alt of Fresh Manager")
+        self.assertTrue(rows["Fresh Manager"].startswith("account "))
+        self.target.is_active = False
+        self.target.save()
+        self.assertEqual(names("fresh"), [])
+
+    def test_search_is_limited_to_ten_and_needs_the_assign_permission(self):
+        url = reverse("yagas_srp:manager_search")
+        for number in range(12):
+            EveCharacter.objects.create(character_id=6990 + 100 + number, character_name=f"Bulk Pilot {number:02d}",
+                                        corporation_id=1, corporation_name="Test Corp")
+            CharacterOwnership.objects.create(
+                character=EveCharacter.objects.get(character_id=6990 + 100 + number), user=self.target,
+                owner_hash=f"bulk{number}")
+        self.assertEqual(len(self.client.get(url, {"q": "bulk pilot"}).json()["results"]), 10)
+        self.client.force_login(self.plain)
+        self.assertEqual(self.client.get(url, {"q": "bulk pilot"}).status_code, 302)
