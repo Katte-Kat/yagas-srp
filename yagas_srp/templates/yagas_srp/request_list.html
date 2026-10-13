@@ -98,8 +98,8 @@
                                     {% if column.active %}<i class="fas fa-sort-{% if column.direction == 'asc' %}up{% else %}down{% endif %}"></i>{% else %}<i class="fas fa-sort text-muted"></i>{% endif %}
                                 </a>
                             </th>
+                            {% if column.key == "system" %}<th class="text-nowrap">{% translate "Tags" %}</th>{% endif %}
                         {% endfor %}
-                        <th>{% translate "Tags" %}</th>
                         {% if show_paid %}<th class="text-nowrap" title="{% translate 'Read from the wallet booking that names this request: SRP #number' %}">{% translate "Paid" %}</th>{% endif %}
                         {% if show_actions %}<th class="text-end">{% translate "Decide" %}</th>{% endif %}
                     </tr>
@@ -120,6 +120,7 @@
                                 {{ srp.ship_type_name|default:"—" }}
                             </td>
                             <td>{{ srp.solar_system_name|default:"—" }}</td>
+                            <td class="text-nowrap">{% for t in srp.shown_tags %}<a class="badge text-decoration-none" style="background:{{ t.color }}" href="?{{ tag_query }}&tag={{ t.slug }}" title="{{ t.description }}">{{ t.name }}</a> {% endfor %}</td>
                             <td class="text-end text-nowrap">
                                 <span class="fw-bold" title="{% translate 'Hull' %} {{ srp.ship_value|floatformat:0|intcomma }} + {% translate 'fit' %} {{ srp.fit_value|floatformat:0|intcomma }}">{{ srp.payout_value|floatformat:0|intcomma }}</span>
                                 <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted copy-btn" data-copy="{{ srp.payout_value|floatformat:'0u' }}" title="{% translate 'Copy ISK amount (digits only)' %}"><i class="fas fa-copy"></i></button>
@@ -131,7 +132,6 @@
                                     </span>
                                 {% endif %}
                             </td>
-                            <td class="text-nowrap">{% for t in srp.tags.all %}<a class="badge text-decoration-none" style="background:{{ t.color }}" href="?{{ tag_query }}&tag={{ t.slug }}" title="{{ t.description }}">{{ t.name }}</a> {% endfor %}</td>
                             {% if show_paid %}
                                 <td class="text-nowrap">{% include "yagas_srp/_paid_badge.html" with payment=srp.paid %}</td>
                             {% endif %}

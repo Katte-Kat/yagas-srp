@@ -117,12 +117,16 @@ def request_list(request):
         for srp in rows:
             srp.paid = states.get(srp.pk)
         page.object_list = rows
+    rows = list(page.object_list)
+    for srp in rows:
+        srp.shown_tags = tagging.shown_tags(request.user, srp.tags.all())
+    page.object_list = rows
     columns = []
     for key, label, _expr, first_direction, right in INBOX_COLUMNS:
         active = key == sort
         next_direction = ("asc" if direction == "desc" else "desc") if active else first_direction
         columns.append({
-            "label": label, "right": right, "active": active, "direction": direction,
+            "key": key, "label": label, "right": right, "active": active, "direction": direction,
             "query": f"status={status}&sort={key}&dir={next_direction}" + (f"&tag={tag.slug}" if tag else ""),
         })
     tag_counts = dict(visible.filter(status=status).order_by().values_list("tags").annotate(n=Count("id", distinct=True)))
@@ -167,7 +171,7 @@ def request_detail(request, pk):
         "counted_groups": [g for g in counted if g["items"]],
         "other_groups": [g for g in not_counted if g["items"]],
         "can_approve": request.user.has_perm("yagas_srp.approve_requests"),
-        "tags": list(srp.tags.all()),
+        "tags": tagging.shown_tags(request.user, srp.tags.all()),
         "addable_tags": list(SrpTag.objects.filter(is_active=True).exclude(pk__in=srp.tags.values("pk"))),
     })
 

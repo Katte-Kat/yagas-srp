@@ -110,3 +110,13 @@ def tags_for_filter(user):
     if is_full_viewer(user):
         return list(SrpTag.objects.filter(is_active=True))
     return list(SrpTag.objects.filter(pk__in=viewer_tag_ids(user)))
+
+
+def shown_tags(user, tags):
+    """The tags of a request this user is shown: all of them for the SRP managers and directors (the full viewers), only those of their own viewer groups for the others, so that
+    somebody who may see the BLOPS requests is not told what else a request is filed under."""
+    tags = list(tags)
+    if is_full_viewer(user):
+        return tags
+    allowed = set(viewer_tag_ids(user))
+    return [t for t in tags if t.pk in allowed]

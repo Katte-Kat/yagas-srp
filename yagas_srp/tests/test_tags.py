@@ -146,6 +146,25 @@ class AccessTests(Base):
         self.assertFalse(response.context["show_actions"])
         self.assertNotIn("review_request", response.content.decode().replace("yagas_srp:review", ""))
 
+    def test_a_viewer_is_shown_only_the_tags_of_his_own_group_and_the_managers_all_of_them(self):
+        shown, response = self.ids(self.blops_viewer)
+        by_pk = {srp.pk: [t.name for t in srp.shown_tags] for srp in response.context["page"]}
+        self.assertEqual(by_pk[self.both.pk], ["BLOPS SRP"])
+        html = response.content.decode()
+        self.assertNotIn("SANCTION SRP", html)
+        detail = self.client.get(reverse("yagas_srp:request_detail", args=[self.both.pk])).content.decode()
+        self.assertIn("BLOPS SRP", detail)
+        self.assertNotIn("SANCTION SRP", detail)
+        _, response = self.ids(self.manager)
+        by_pk = {srp.pk: [t.name for t in srp.shown_tags] for srp in response.context["page"]}
+        self.assertEqual(by_pk[self.both.pk], ["BLOPS SRP", "SANCTION SRP"])
+
+    def test_the_tags_column_sits_between_system_and_total(self):
+        _, response = self.ids(self.manager)
+        html = response.content.decode()
+        head = html[html.index("<thead>"):html.index("</thead>")]
+        self.assertTrue(head.index("System") < head.index("Tags") < head.index("Total (ISK)"))
+
     def test_the_totals_do_not_count_a_request_twice(self):
         self.blops.viewer_groups.add(self.group)
         self.sanction.viewer_groups.add(self.group)                                       # a viewer of both tags: the request with both is still one request
@@ -263,6 +282,24 @@ class SeedAndAdminTests(Base):
         self.assertEqual(sorted(t.name for t in SrpTagRule.objects.get(kind="subject", keyword="TARGET").tags.all()), ["BLOPS SRP", "SANCTION SRP"])
         self.assertEqual([t.name for t in SrpTagRule.objects.get(kind="hull").tags.all()], ["BLOPS SRP"])
         self.assertEqual([t.name for t in tagging.matching_tags("HUNT", "", None)], ["BLOPS SRP", "SANCTION SRP"])
+
+    def test_hunt_target_and_hunter_say_what_kind_of_request_it_is(self):
+        from django.apps import apps
+
+        seed7 = importlib.import_module("yagas_srp.migrations.0007_seed_tags").seed
+        seed8 = importlib.import_module("yagas_srp.migrations.0008_hunt_target_tags").seed
+        SrpTag.objects.all().delete()
+        Group.objects.filter(name="BLOPS SRP").delete()
+        seed7(apps, None)
+        seed8(apps, None)
+        seed8(apps, None)                                                                  # again: nothing doubles
+        self.assertEqual(sorted(SrpTag.objects.values_list("name", flat=True)), ["BLOPS SRP", "HUNT", "SANCTION SRP", "TARGET"])
+        self.assertEqual(SrpTagRule.objects.count(), 4)
+        names = lambda subject: [t.name for t in tagging.matching_tags(subject, "", None)]
+        self.assertEqual(names("HUNT"), ["BLOPS SRP", "SANCTION SRP", "HUNT"])
+        self.assertEqual(names("srp for a hunter"), ["BLOPS SRP", "SANCTION SRP", "HUNT"])        # HUNTER counts like HUNT
+        self.assertEqual(names("TARGET"), ["BLOPS SRP", "SANCTION SRP", "TARGET"])
+        self.assertEqual(names("hunters"), [])                                             # whole words only
 
     def test_the_admin_pages_and_the_apply_action(self):
         admin = make_user("srp_tag_admin", 6201)
