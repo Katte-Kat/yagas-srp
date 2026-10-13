@@ -7,7 +7,7 @@ from . import urls
 
 
 class SrpMenuItem(MenuItemHook):
-    """Only users who may view the SRP inbox see the entry; badge = requests waiting for a decision."""
+    """Only users who may view the SRP inbox (or the requests of a tag their group may look at) see the entry; badge = their requests waiting for a decision."""
 
     def __init__(self):
         MenuItemHook.__init__(
@@ -15,11 +15,13 @@ class SrpMenuItem(MenuItemHook):
             navactive=["yagas_srp:"])
 
     def render(self, request):
-        if not request.user.has_perm("yagas_srp.view_requests"):
+        from . import tagging
+
+        if not tagging.may_open_inbox(request.user):
             return ""
         from .models import SrpRequest
 
-        self.count = SrpRequest.objects.filter(status=SrpRequest.Status.PENDING).count() or None
+        self.count = tagging.visible_requests(request.user).filter(status=SrpRequest.Status.PENDING).count() or None
         return MenuItemHook.render(self, request)
 
 

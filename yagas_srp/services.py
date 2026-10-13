@@ -295,8 +295,19 @@ def reprice_request(srp) -> None:
             "ship_price_source", "priced_at", "validation_flags"])
 
 
-def create_request_from_mail(*, receiver, mail_id, sender_id, subject, body_html, received_at):
-    """Creates (and returns) the SrpRequest for one inbound mail."""
+def create_request_from_mail(**mail):
+    """Creates (and returns) the SrpRequest for one inbound mail, with the tags its subject, text and ship call for (the tag rules; a failure there never costs the request)."""
+    request = _create_request_from_mail(**mail)
+    try:
+        from yagas_srp import tagging
+
+        tagging.apply_rules(request)
+    except Exception:
+        logger.exception("yagas_srp: the tag rules could not be applied to request #%s", request.pk)
+    return request
+
+
+def _create_request_from_mail(*, receiver, mail_id, sender_id, subject, body_html, received_at):
     from yagas_srp.models import SrpRequest, SrpRequestItem
 
     base = {

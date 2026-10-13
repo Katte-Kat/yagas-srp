@@ -53,6 +53,20 @@
         </div>
     {% endif %}
 
+    {% if tag_chips %}
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-3" id="tag-filter">
+            <span class="text-muted small"><i class="fas fa-tags"></i> {% translate "Tags" %}</span>
+            {% if full_viewer %}
+                <a class="btn btn-sm {% if not tag %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="?{{ tag_query }}">{% translate "All" %}</a>
+            {% endif %}
+            {% for chip in tag_chips %}
+                <a class="btn btn-sm" href="?{{ tag_query }}&tag={{ chip.tag.slug }}"
+                   style="{% if chip.active %}background:{{ chip.tag.color }};border-color:{{ chip.tag.color }};color:#fff{% else %}border-color:{{ chip.tag.color }};color:{{ chip.tag.color }}{% endif %}"
+                   title="{{ chip.tag.description }}">{{ chip.tag.name }} <span class="badge text-bg-dark">{{ chip.count }}</span></a>
+            {% endfor %}
+        </div>
+    {% endif %}
+
     <ul class="nav nav-pills">
         {% for tab in tabs %}
             <li class="nav-item">
@@ -85,6 +99,7 @@
                                 </a>
                             </th>
                         {% endfor %}
+                        <th>{% translate "Tags" %}</th>
                         {% if show_paid %}<th class="text-nowrap" title="{% translate 'Read from the wallet booking that names this request: SRP #number' %}">{% translate "Paid" %}</th>{% endif %}
                         {% if show_actions %}<th class="text-end">{% translate "Decide" %}</th>{% endif %}
                     </tr>
@@ -116,6 +131,7 @@
                                     </span>
                                 {% endif %}
                             </td>
+                            <td class="text-nowrap">{% for t in srp.tags.all %}<a class="badge text-decoration-none" style="background:{{ t.color }}" href="?{{ tag_query }}&tag={{ t.slug }}" title="{{ t.description }}">{{ t.name }}</a> {% endfor %}</td>
                             {% if show_paid %}
                                 <td class="text-nowrap">{% include "yagas_srp/_paid_badge.html" with payment=srp.paid %}</td>
                             {% endif %}
@@ -138,7 +154,7 @@
                             {% endif %}
                         </tr>
                     {% empty %}
-                        <tr><td colspan="{% if show_actions %}8{% else %}7{% endif %}" class="text-muted">{% translate "Nothing here." %}</td></tr>
+                        <tr><td colspan="{% if show_actions %}9{% else %}8{% endif %}" class="text-muted">{% translate "Nothing here." %}</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

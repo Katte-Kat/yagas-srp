@@ -31,6 +31,24 @@ as `invalid` so it is visible why a mail did not arrive in the queue.
   poll. "Reprice" on a pending request re-values it live.
 - All amounts are whole ISK.
 
+## Tags
+
+A request carries any number of **tags** (admin: *SRP tags*), for example `BLOPS SRP` and `SANCTION SRP`. Tags come from **tag rules** (admin: *SRP tag rules*), checked when a mail
+becomes a request:
+
+- `subject` rule: a whole word or phrase in the mail subject (`HUNT` matches "SRP hunt loss", not "hunters"); case does not matter.
+- `body` rule: the same for the mail text.
+- `hull` rule: the ship group of the loss from the static data, exactly (`Black Ops`).
+
+A rule gives one or more tags. Rules only ever add tags, and a request whose tags somebody changed by hand (request page or admin) is left alone from then on. After changing rules, run
+`python manage.py srp_tags` (`--dry-run` to look first, `--force` to include hand-edited requests) or use the admin action "Apply all active rules to every request now".
+
+**Who sees what:** a tag can name **viewer groups** (Auth groups). A member of such a group opens the inbox (menu entry, list, request pages) but sees only the requests carrying a tag of
+theirs, read-only: no approving, reopening, repricing or tag editing. Managers with `view_requests` still see everything and can filter by tag.
+
+Migration 0007 seeds the Baba Yagas setup once: tags `BLOPS SRP` (viewer group `BLOPS SRP`, created empty) and `SANCTION SRP`; subject `HUNT` and `TARGET` give both tags, the hull
+group `Black Ops` gives `BLOPS SRP`. Add the BLOPS people to the Auth group `BLOPS SRP`; change or delete the seeded rules in the admin as you like.
+
 ## Permissions
 
 | Permission | Allows |
@@ -38,6 +56,7 @@ as `invalid` so it is visible why a mail did not arrive in the queue.
 | `yagas_srp.view_requests` | see the inbox and every request |
 | `yagas_srp.approve_requests` | approve / deny / reopen / reprice, and pull the mailbox |
 | `yagas_srp.manage_receiver` | choose, activate, deactivate and remove receiver characters |
+| viewer group of a tag | see (read-only) the requests carrying that tag |
 
 ## Install
 

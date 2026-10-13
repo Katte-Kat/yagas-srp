@@ -33,6 +33,49 @@ class MailReceiver(models.Model):
         return self.character_name
 
 
+class SrpTag(models.Model):
+    """A label on requests ("BLOPS SRP", "SANCTION SRP"). Who may look at the requests that carry it is set here: a member of one of the viewer groups sees those requests
+    (and only those) in the inbox without being an SRP manager, so the people who run one kind of SRP can follow it easily."""
+
+    name = models.CharField(max_length=40, unique=True)
+    slug = models.SlugField(max_length=50, unique=True)
+    color = models.CharField(max_length=7, default="#6c757d", help_text=_("Badge colour as #rrggbb."))
+    description = models.CharField(max_length=200, blank=True, default="")
+    viewer_groups = models.ManyToManyField(
+        "auth.Group", blank=True, related_name="+",
+        help_text=_("Members of these groups see the requests with this tag in the SRP inbox (read only; deciding stays with the SRP managers)."))
+    is_active = models.BooleanField(default=True, help_text=_("An inactive tag is not given to new requests and gives nobody access."))
+    order = models.PositiveSmallIntegerField(default=100, help_text=_("Lower comes first in lists and in the filter."))
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class SrpTagRule(models.Model):
+    """What gives a request its tags without anybody doing anything: a word in the mail subject (a hunter writes HUNT), a word in the mail text, or the ship group of the loss
+    (Black Ops). One rule can give several tags. Tags are only ever ADDED by rules."""
+
+    class Kind(models.TextChoices):
+        SUBJECT = "subject", _("Word in the mail subject")
+        BODY = "body", _("Word in the mail text")
+        HULL = "hull", _("Ship group of the loss (e.g. Black Ops)")
+
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.SUBJECT)
+    keyword = models.CharField(max_length=80, help_text=_("A whole word or phrase, any case: HUNT matches 'hunt' and 'HUNT loss', not 'hunters'. For a ship group: its exact name."))
+    tags = models.ManyToManyField(SrpTag, related_name="rules", help_text=_("Every tag chosen here is given to a request the rule matches."))
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        ordering = ["kind", "keyword", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()}: {self.keyword}"
+
+
 class SrpRequest(models.Model):
     """One inbound mail, with the killmail it links to already resolved and valued."""
 
@@ -74,6 +117,8 @@ class SrpRequest(models.Model):
 
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
     validation_flags = models.JSONField(default=list, blank=True)
+    tags = models.ManyToManyField(SrpTag, blank=True, related_name="requests")
+    tags_edited = models.BooleanField(default=False, help_text=_("Somebody changed the tags by hand: the rules leave this request alone when they are applied again."))
 
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")

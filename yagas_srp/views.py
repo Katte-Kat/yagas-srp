@@ -1,3 +1,4 @@
+import functools
 import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
@@ -8,6 +9,7 @@ from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.auth.models import Group, User
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth.decorators import login_required, permission_required, user_passes_test
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Case, Count, DecimalField, F, Func, IntegerField, Sum, Value, When
 from django.db.models.functions import Coalesce, NullIf
@@ -17,7 +19,8 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .models import MailReceiver, SrpRequest
+from . import tagging
+from .models import MailReceiver, SrpRequest, SrpTag
 from .payments import payment_states
 from .roles import ROLE, ROLE_SUMMARY, display_name, ensure_role, find_account, search_accounts
 from .services import MAIL_SCOPE, reprice_request
@@ -57,18 +60,33 @@ def _inbox_sort(request):
     return key, direction
 
 
+def inbox_access(view):
+    """Login, and then either the SRP view permission or a tag the user's groups may look at."""
+    @functools.wraps(view)
+    @login_required
+    def wrapper(request, *args, **kwargs):
+        if not tagging.may_open_inbox(request.user):
+            raise PermissionDenied
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
 def _can_poll(user):
     """Everyone who decides on requests (all Directors) may pull the mailbox; receiver
     managers may too. Which character is polled stays a manage_receiver decision."""
     return user.has_perm("yagas_srp.approve_requests") or user.has_perm("yagas_srp.manage_receiver")
 
 
-@login_required
-@permission_required("yagas_srp.view_requests")
+@inbox_access
 def request_list(request):
     status = request.GET.get("status") or SrpRequest.Status.PENDING
     if status not in SrpRequest.Status.values:
         status = SrpRequest.Status.PENDING
+    full_viewer = tagging.is_full_viewer(request.user)
+    filter_tags = tagging.tags_for_filter(request.user)
+    tag = next((t for t in filter_tags if t.slug == request.GET.get("tag")), None)           # an unknown or not allowed tag is just no filter
+    visible = tagging.visible_requests(request.user)
+    scoped = visible.filter(tags=tag) if tag is not None else visible
 
     # One grouped query for every tab: how many requests and what they are worth together
     # (the approved amount for approved requests, the computed hull + fit value otherwise).
@@ -77,7 +95,7 @@ def request_list(request):
         default=F("total_value"), output_field=DecimalField(max_digits=22, decimal_places=0))
     per_status = {
         row["status"]: row
-        for row in SrpRequest.objects.values("status").annotate(n=Count("id"), total=Sum(worth))
+        for row in scoped.order_by().values("status").annotate(n=Count("id", distinct=True), total=Sum(worth))
     }
     tabs = [
         {"value": value, "label": label, "count": per_status.get(value, {}).get("n", 0),
@@ -89,7 +107,7 @@ def request_list(request):
     ordering = next(col[2] for col in INBOX_COLUMNS if col[0] == sort)
     ordering = ordering.asc() if direction == "asc" else ordering.desc()
     # "-id" keeps the order of equal values stable between pages
-    requests_qs = SrpRequest.objects.filter(status=status).order_by(ordering, "-id")
+    requests_qs = scoped.filter(status=status).order_by(ordering, "-id").prefetch_related("tags")
     page = Paginator(requests_qs, 50).get_page(request.GET.get("page"))
     show_paid = status == SrpRequest.Status.APPROVED
     if show_paid:
@@ -105,8 +123,10 @@ def request_list(request):
         next_direction = ("asc" if direction == "desc" else "desc") if active else first_direction
         columns.append({
             "label": label, "right": right, "active": active, "direction": direction,
-            "query": f"status={status}&sort={key}&dir={next_direction}",
+            "query": f"status={status}&sort={key}&dir={next_direction}" + (f"&tag={tag.slug}" if tag else ""),
         })
+    tag_counts = dict(visible.filter(status=status).order_by().values_list("tags").annotate(n=Count("id", distinct=True)))
+    tag_chips = [{"tag": t, "count": tag_counts.get(t.pk, 0), "active": tag is not None and t.pk == tag.pk} for t in filter_tags]
 
     return render(request, "yagas_srp/request_list.html", {
         "tabs": tabs,
@@ -116,7 +136,9 @@ def request_list(request):
         "current_tab": current_tab,
         "show_total": status != SrpRequest.Status.INVALID,   # invalid mails have no value
         "show_paid": show_paid,
-        "sort_query": f"sort={sort}&dir={direction}",
+        "sort_query": f"sort={sort}&dir={direction}" + (f"&tag={tag.slug}" if tag else ""),
+        "tag": tag, "tag_chips": tag_chips, "full_viewer": full_viewer,
+        "tag_query": f"status={status}&sort={sort}&dir={direction}",
         "receivers": MailReceiver.objects.all(),
         "can_manage": request.user.has_perm("yagas_srp.manage_receiver"),
         "can_poll": _can_poll(request.user),
@@ -127,10 +149,9 @@ def request_list(request):
     })
 
 
-@login_required
-@permission_required("yagas_srp.view_requests")
+@inbox_access
 def request_detail(request, pk):
-    srp = get_object_or_404(SrpRequest.objects.select_related("reviewed_by", "receiver"), pk=pk)
+    srp = get_object_or_404(tagging.visible_requests(request.user).select_related("reviewed_by", "receiver"), pk=pk)
     items = list(srp.items.all())
     counted = [
         {"label": label, "items": [i for i in items if i.slot_group == key]}
@@ -146,7 +167,28 @@ def request_detail(request, pk):
         "counted_groups": [g for g in counted if g["items"]],
         "other_groups": [g for g in not_counted if g["items"]],
         "can_approve": request.user.has_perm("yagas_srp.approve_requests"),
+        "tags": list(srp.tags.all()),
+        "addable_tags": list(SrpTag.objects.filter(is_active=True).exclude(pk__in=srp.tags.values("pk"))),
     })
+
+
+@login_required
+@permission_required("yagas_srp.approve_requests")
+@require_POST
+def edit_tags(request, pk):
+    """Add or remove one tag by hand. A request whose tags were edited by hand is not touched by the tag rules any more."""
+    srp = get_object_or_404(SrpRequest, pk=pk)
+    tag = SrpTag.objects.filter(pk=request.POST.get("tag") or 0).first()
+    action = request.POST.get("action")
+    if tag is None or action not in ("add", "remove"):
+        messages.error(request, "Choose a tag.")
+    else:
+        (srp.tags.add if action == "add" else srp.tags.remove)(tag)
+        if not srp.tags_edited:
+            srp.tags_edited = True
+            srp.save(update_fields=["tags_edited"])
+        messages.success(request, f"Tag {tag.name} {'added to' if action == 'add' else 'removed from'} request #{pk}.")
+    return redirect("yagas_srp:request_detail", pk=pk)
 
 
 def _back(request, pk):
