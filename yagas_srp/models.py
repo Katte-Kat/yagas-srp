@@ -118,7 +118,7 @@ class SrpRequest(models.Model):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
     validation_flags = models.JSONField(default=list, blank=True)
     tags = models.ManyToManyField(SrpTag, blank=True, related_name="requests")
-    tags_edited = models.BooleanField(default=False, help_text=_("Somebody changed the tags by hand: the rules leave this request alone when they are applied again."))
+    tags_edited = models.BooleanField(default=False, db_default=False, help_text=_("Somebody changed the tags by hand: the rules leave this request alone when they are applied again."))
 
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")

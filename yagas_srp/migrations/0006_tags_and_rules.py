@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='srprequest',
             name='tags_edited',
-            field=models.BooleanField(default=False, help_text='Somebody changed the tags by hand: the rules leave this request alone when they are applied again.'),
+            field=models.BooleanField(default=False, db_default=False, help_text='Somebody changed the tags by hand: the rules leave this request alone when they are applied again.'),
         ),
         migrations.CreateModel(
             name='SrpTag',
