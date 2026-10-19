@@ -1,10 +1,10 @@
 # yagas-srp
 
 Mail-driven ship replacement (SRP) inbox for [Alliance Auth](https://allianceauth.org/) 5.x.
-Pilots mail a killmail link to one receiver character; directors see the requests in Auth and
-approve or deny them.
+Pilots mail a killmail link to one receiver character; directors and SRP managers see the requests
+in Auth and approve or deny them.
 
-Prototype, running on the Baba Yagas test instance. Not deployed on production.
+Built for Baba Yagas and in production use there. Separate from `allianceauth.srp` on purpose.
 
 ## How it works
 
@@ -15,10 +15,32 @@ Prototype, running on the Baba Yagas test instance. Not deployed on production.
    button) reads that character's inbox. Only mails addressed to it personally are processed.
 3. A `killReport:ID:HASH` link, an ESI killmail URL or a zKillboard URL is turned into a request:
    the killmail is fetched from ESI (public endpoint) and valued.
-4. Directors approve (with an editable payout), deny or reopen a request in `/srp-inbox/`.
+4. Directors and SRP managers approve (with an editable payout), deny or reopen a request in
+   `/srp-inbox/`.
 
 Requests that cannot be turned into a valid request (no link, bad hash, duplicate killmail) are kept
 as `invalid` so it is visible why a mail did not arrive in the queue.
+
+## The inbox
+
+- One tab per status: **Pending**, **Approved**, **Denied**, **Invalid** and **Archived** (old mails
+  imported from the mailbox history, not up for a decision), each with its count and total value.
+- Every column header sorts (`?sort=` and `?dir=`; numbers and dates start descending, text
+  ascending, a second click flips); the sort is kept across tabs and pages.
+- Decide straight from the list. Copy buttons hand out the pilot name, the payout in digits only and
+  the payment reason `SRP #<number>` to paste into the wallet transfer.
+- The menu entry carries a badge with the requests waiting for the viewer's decision.
+- The regular poll reads the newest 200 mail headers and handles at most 25 new mails per run; the
+  whole history is read once with `srp_backfill_mailbox` (below).
+
+## Paid or not (optional)
+
+When [yagas-finance-dashboard](https://github.com/Katte-Kat/Yagas-Finance-dashboard) is installed
+and its SRP mark is set up, the inbox shows for approved requests whether the wallet booking that
+paid them was found. The booking names the request in its reason (`SRP #123`). States: **paid**
+(booked exactly the payout), **differs** (another amount), **shared** (one booking paid several
+requests) and **open** (approved after the mark was set up, no booking yet). Without the finance app,
+or when reading it fails, nothing is shown and the inbox works as before.
 
 ## Valuation
 
@@ -55,8 +77,14 @@ group `Black Ops` gives `BLOPS SRP`. Add the BLOPS people to the Auth group `BLO
 |---|---|
 | `yagas_srp.view_requests` | see the inbox and every request |
 | `yagas_srp.approve_requests` | approve / deny / reopen / reprice, and pull the mailbox |
-| `yagas_srp.manage_receiver` | choose, activate, deactivate and remove receiver characters |
+| `yagas_srp.manage_receiver` | choose, activate, deactivate and remove receiver characters (also allows "Poll mailbox now") |
+| `yagas_srp.assign_srp_managers` | hand out and take away the SRP Manager role on `/srp-inbox/managers/` |
 | viewer group of a tag | see (read-only) the requests carrying that tag |
+
+**SRP Manager role:** a plain Auth group (`SRP Manager`, created on demand) with `view_requests` and
+`approve_requests`: it sees every request and decides on it, but cannot change the mail receiver or
+hand out the role. Whoever holds `assign_srp_managers` adds a manager by typing a character name
+(type-ahead over the registered characters) and removes one with one click.
 
 ## Install
 
@@ -78,5 +106,15 @@ portal has the `esi-mail.read_mail.v1` scope enabled.
 
 Optional setting: `YAGAS_SRP_MAX_KILL_AGE_DAYS` (default 14), kills older than that get a warning.
 
-`python manage.py srp_add_test_request --sender-id <character id> --body '<a href="killReport:ID:HASH">kill</a>'`
-runs one fake mail through the same pipeline for testing.
+Contact address: the user agent sent to zKillboard and Fuzzwork carries `ESI_USER_CONTACT_EMAIL` from your Django settings (nothing is stored in this repository).
+
+## Commands
+
+- `python manage.py srp_backfill_mailbox [--since YYYY-MM-DD] [--archive-older-than-days N] [--dry-run] [--limit N]`
+  reads the receiver's older mails once (newest first, paced to ESI's mail rate limit, so a big
+  inbox takes an hour or more) and turns every personally addressed mail that links a killmail into
+  a request; older ones become `archived`, younger ones stay pending. Mails without a link are
+  skipped, not recorded as invalid. Safe to repeat.
+- `python manage.py srp_tags [--dry-run] [--force]` applies the tag rules again (see Tags).
+- `python manage.py srp_add_test_request --sender-id <character id> --body '<a href="killReport:ID:HASH">kill</a>'`
+  runs one fake mail through the same pipeline for testing.
