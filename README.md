@@ -35,7 +35,7 @@ as `invalid` so it is visible why a mail did not arrive in the queue.
 
 ## Paid or not (optional)
 
-When [yagas-finance-dashboard](https://github.com/Katte-Kat/Yagas-Finance-dashboard) is installed
+When the yagas-finance-dashboard app is installed
 and its SRP mark is set up, the inbox shows for approved requests whether the wallet booking that
 paid them was found. The booking names the request in its reason (`SRP #123`). States: **paid**
 (booked exactly the payout), **differs** (another amount), **shared** (one booking paid several
