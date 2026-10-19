@@ -1,6 +1,6 @@
 # yagas-srp
 
-Mail-driven ship replacement (SRP) inbox for [Alliance Auth](https://allianceauth.org/) 5.x.
+Mail-driven ship replacement (SRP) inbox for [Alliance Auth](https://apps.allianceauth.org/) 5.x.
 Pilots mail a killmail link to one receiver character; directors and SRP managers see the requests
 in Auth and approve or deny them.
 
