@@ -118,3 +118,7 @@ Contact address: the user agent sent to zKillboard and Fuzzwork carries `ESI_USE
 - `python manage.py srp_tags [--dry-run] [--force]` applies the tag rules again (see Tags).
 - `python manage.py srp_add_test_request --sender-id <character id> --body '<a href="killReport:ID:HASH">kill</a>'`
   runs one fake mail through the same pipeline for testing.
+
+## License
+
+MIT, see `LICENSE`.
